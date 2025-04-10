@@ -10,7 +10,7 @@ import os
 app = FastAPI()
 
 # Load and process the PDF once
-pdf_path = "app/support_doc.pdf"  # Adjust if needed
+pdf_path = "support_doc.pdf"  # Adjust if needed
 loader = PyPDFLoader(pdf_path)
 pages = loader.load()
 
