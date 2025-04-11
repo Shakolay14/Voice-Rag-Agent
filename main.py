@@ -10,7 +10,7 @@ app = FastAPI()
 
 # Load FAISS index and embedding model
 embedding = OpenAIEmbeddings()
-db = FAISS.load_local("faiss_index", embeddings=embedding)
+db = FAISS.load_local("faiss_index", embeddings=embedding, allow_dangerous_deserialization=True)
 
 # Load language model and QA chain
 llm = OpenAI(temperature=0)
