@@ -1,57 +1,56 @@
 from fastapi import FastAPI, Request
-from langchain.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from fastapi.responses import JSONResponse
+from langchain.chains.question_answering import load_qa_chain
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, OpenAI
-from langchain.chains.qa_with_sources import load_qa_chain
-from langchain.llms import OpenAI
-import os
+from langchain_openai import OpenAI, OpenAIEmbeddings
+import traceback
 
+# Initialize FastAPI app
 app = FastAPI()
 
-# Load and process the PDF once
-pdf_path = "support_doc.pdf"  # Adjust if needed
-loader = PyPDFLoader(pdf_path)
-pages = loader.load()
-
-# Split the text
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-documents = text_splitter.split_documents(pages)
-
-# Create vector store
+# Load FAISS index and embedding model
 embedding = OpenAIEmbeddings()
-db = FAISS.from_documents(documents, embedding)
+db = FAISS.load_local("faiss_index", embeddings=embedding)
 
-# LLM setup
+# Load language model and QA chain
 llm = OpenAI(temperature=0)
 chain = load_qa_chain(llm, chain_type="stuff")
 
+
 @app.post("/ask")
 async def ask_question(request: Request):
-    data = await request.json()
+    try:
+        data = await request.json()
 
-    # Handle Dialogflow format
-    if "queryResult" in data:
-        user_question = data["queryResult"]["queryText"]
-    else:
-        user_question = data.get("question")
+        # Dialogflow CX sends a nested structure — get actual text
+        user_question = (
+            data.get("text") or
+            data.get("queryInput", {}).get("text", {}).get("text") or
+            None
+        )
 
-    # Search for relevant chunks
-    docs = db.similarity_search(user_question)
+        if not isinstance(user_question, str) or not user_question.strip():
+            raise ValueError("Invalid or missing 'text' in request.")
 
-    # Get answer from LLM
-    answer = chain.run(input_documents=docs, question=user_question)
+        # Search and respond
+        docs = db.similarity_search(user_question)
+        answer = chain.run(input_documents=docs, question=user_question)
 
-    # Return to Dialogflow if needed
-    if "queryResult" in data:
-        return {"fulfillmentText": answer}
-    else:
-        return {"answer": answer}
-import os
-import logging
+        return {
+            "fulfillment_response": {
+                "messages": [
+                    {
+                        "text": {
+                            "text": [answer]
+                        }
+                    }
+                ]
+            }
+        }
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-api_key = os.environ.get("OPENAI_API_KEY")
-logger.info(f"API key available: {bool(api_key)}")
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
