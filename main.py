@@ -55,3 +55,46 @@ logger = logging.getLogger(__name__)
 
 api_key = os.environ.get("OPENAI_API_KEY")
 logger.info(f"API key available: {bool(api_key)}")
+from fastapi import Request, HTTPException
+
+@app.post("/ask")
+async def ask_question(request: Request):
+    try:
+        body = await request.json()
+        user_question = body.get("text")
+
+        if not isinstance(user_question, str):
+            raise HTTPException(status_code=400, detail="Field 'text' must be a string.")
+
+        print("✅ User question:", user_question)
+
+        # Step 1: Search relevant documents
+        docs = db.similarity_search(user_question)
+
+        # Step 2: Use RAG chain to answer
+        result = qa_chain.invoke({"question": user_question, "context": docs})
+
+        # Step 3: Return Dialogflow-style response
+        response = {
+            "fulfillment_response": {
+                "messages": [
+                    {
+                        "text": {
+                            "text": [result]
+                        }
+                    }
+                ]
+            }
+        }
+        return JSONResponse(content=response)
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)},
+        )
+
