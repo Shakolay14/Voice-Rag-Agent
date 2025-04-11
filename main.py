@@ -47,3 +47,11 @@ async def ask_question(request: Request):
         return {"fulfillmentText": answer}
     else:
         return {"answer": answer}
+import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+api_key = os.environ.get("OPENAI_API_KEY")
+logger.info(f"API key available: {bool(api_key)}")
