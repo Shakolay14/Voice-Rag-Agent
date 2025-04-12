@@ -36,7 +36,6 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Voice RAG Agent is running."}
-
 @app.post("/ask")
 async def ask_question(request: Request):
     body = await request.json()
@@ -51,25 +50,14 @@ async def ask_question(request: Request):
             }
         }
 
-    docs = db.similarity_search(user_question)
-    answer = chain.run(input_documents=docs, question=user_question)
-
-    return {
-        "fulfillment_response": {
-            "messages": [
-                {"text": {"text": [answer]}}
-            ]
-        }
-    }
-        # Search for relevant document chunks
-    docs = db.similarity_search(user_question, k=1)
+    # Search for relevant document chunks
+    docs = db.similarity_search(user_question, k=2)
     print("Top document chunk found:", docs[0].page_content if docs else "No match")
 
     if not docs:
         response_text = "Sorry, I couldn't find an answer in the document."
     else:
-        response = chain.run(input_documents=docs, question=user_question)
-        response_text = response
+        response_text = chain.run(input_documents=docs, question=user_question)
 
     return {
         "fulfillment_response": {
@@ -77,5 +65,7 @@ async def ask_question(request: Request):
                 {"text": {"text": [response_text]}}
             ]
         }
+    }
+ 
     }
 
