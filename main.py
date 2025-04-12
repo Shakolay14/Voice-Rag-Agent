@@ -14,7 +14,7 @@ app = FastAPI()
 os.environ["OPENAI_API_KEY"] = "your-openai-key"
 
 # Load the document and prepare the vector store
-pdf_path = "app/support_doc.pdf"
+pdf_path = "support_doc.pdf"
 loader = PyPDFLoader(pdf_path)
 pages = loader.load()
 
