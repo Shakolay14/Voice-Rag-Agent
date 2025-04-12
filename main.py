@@ -11,7 +11,9 @@ import os
 app = FastAPI()
 
 # Set your OpenAI API Key (you can use environment variable or hardcode here for test)
-os.environ["OPENAI_API_KEY"] = "your-openai-key"
+from langchain_community.embeddings.openai import OpenAIEmbeddings
+
+embedding = OpenAIEmbeddings()
 
 # Load the document and prepare the vector store
 pdf_path = "support_doc.pdf"
