@@ -36,6 +36,7 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Voice RAG Agent is running."}
+
 @app.post("/ask")
 async def ask_question(request: Request):
     body = await request.json()
@@ -66,6 +67,3 @@ async def ask_question(request: Request):
             ]
         }
     }
- 
-    }
-
