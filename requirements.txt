@@ -1,20 +1,11 @@
-# FastAPI and server
 fastapi
 uvicorn
 
-# LangChain core packages
 langchain>=0.2
 langchain-community>=0.0.21
 langchain-openai>=0.1.8
 
-# Vector store
 faiss-cpu
-
-# PDF reading
 pypdf
-
-# OpenAI LLM support
 openai
-
-# Environment and utility
 python-dotenv
