@@ -18,7 +18,7 @@ if not OPENAI_API_KEY:
     raise EnvironmentError("Missing OPENAI_API_KEY")
 
 # Load and prepare the document
-pdf_path = "app/support_doc.pdf"
+pdf_path = "support_doc.pdf"
 loader = PyPDFLoader(pdf_path)
 documents = loader.load()
 
