@@ -39,31 +39,55 @@ def read_root():
 
 @app.post("/ask")
 async def ask_question(request: Request):
-    body = await request.json()
-    user_question = body.get("text", "").strip()
+    try:
+        body = await request.json()
+        print("Received body:", body)
 
-    if not user_question:
+        tag = body.get("tag", "")
+        user_question = body.get("text", "").strip()
+
+        if tag != "ask-doc-question":
+            print("Invalid tag received:", tag)
+            return {
+                "fulfillment_response": {
+                    "messages": [
+                        {"text": {"text": ["Webhook tag mismatch."]}}
+                    ]
+                }
+            }
+
+        if not user_question:
+            return {
+                "fulfillment_response": {
+                    "messages": [
+                        {"text": {"text": ["No question found in request"]}}
+                    ]
+                }
+            }
+
+        # Search for relevant document chunks
+        docs = db.similarity_search(user_question, k=2)
+        print("Top doc found:", docs[0].page_content if docs else "No match found.")
+
+        if not docs:
+            response_text = "Sorry, I couldn't find an answer in the document."
+        else:
+            response_text = chain.run(input_documents=docs, question=user_question)
+
         return {
             "fulfillment_response": {
                 "messages": [
-                    {"text": {"text": ["No question found in request"]}}
+                    {"text": {"text": [response_text]}}
                 ]
             }
         }
 
-    # Search for relevant document chunks
-    docs = db.similarity_search(user_question, k=2)
-    print("Top document chunk found:", docs[0].page_content if docs else "No match")
-
-    if not docs:
-        response_text = "Sorry, I couldn't find an answer in the document."
-    else:
-        response_text = chain.run(input_documents=docs, question=user_question)
-
-    return {
-        "fulfillment_response": {
-            "messages": [
-                {"text": {"text": [response_text]}}
-            ]
+    except Exception as e:
+        print("Exception:", e)
+        return {
+            "fulfillment_response": {
+                "messages": [
+                    {"text": {"text": [f"Server error: {str(e)}"]}}
+                ]
+            }
         }
-    }
