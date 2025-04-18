@@ -3,8 +3,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_openai.embeddings import OpenAIEmbeddings
-from langchain_openai import OpenAI
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.llms import OpenAI
 from langchain.chains.question_answering import load_qa_chain
 from dotenv import load_dotenv
 
@@ -19,9 +19,9 @@ documents = loader.load()
 embedding = OpenAIEmbeddings()
 db = FAISS.from_documents(documents, embedding)
 
-# Load QA chain using "refine" to handle large documents
+# Load QA chain
 llm = OpenAI(temperature=0)
-qa_chain = load_qa_chain(llm, chain_type="refine")
+qa_chain = load_qa_chain(llm, chain_type="stuff")
 
 # FastAPI setup
 app = FastAPI()
@@ -43,7 +43,6 @@ async def ask_question(request: Request):
         body = await request.json()
         print("Received body:", body)
 
-        # FIXED: Get tag from fulfillmentInfo correctly
         tag = body.get("fulfillmentInfo", {}).get("tag", "")
         user_question = body.get("text", "").strip()
 
@@ -61,25 +60,24 @@ async def ask_question(request: Request):
             return {
                 "fulfillment_response": {
                     "messages": [
-                        {"text": {"text": ["No question provided."]}}
+                        {"text": {"text": ["No question found in request"]}}
                     ]
                 }
             }
 
         docs = db.similarity_search(user_question, k=2)
-
         if not docs:
-            response_text = "Sorry, I couldn't find anything relevant in the document."
+            response_text = "Sorry, I couldn't find an answer in the document."
         else:
-            response_text = qa_chain.invoke({
-                "input_documents": docs,
-                "question": user_question
-            })
+            response_text = qa_chain.run(input_documents=docs, question=user_question)
+            # Ensure plain text is returned
+            if isinstance(response_text, dict) and "output_text" in response_text:
+                response_text = response_text["output_text"]
 
         return {
             "fulfillment_response": {
                 "messages": [
-                    {"text": {"text": [response_text]}}
+                    {"text": {"text": [str(response_text)]}}
                 ]
             }
         }
