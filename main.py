@@ -3,24 +3,26 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, OpenAI
-from langchain.chains.question_answering import load_qa_chain
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Load the PDF document
+# Load PDF
 pdf_path = "support_doc.pdf"
 loader = PyPDFLoader(pdf_path)
 documents = loader.load()
 
-# Set up embedding and vector store
+# Embed and store
 embedding = OpenAIEmbeddings()
 db = FAISS.from_documents(documents, embedding)
 
-# Load QA chain
-llm = OpenAI(temperature=0)
-qa_chain = load_qa_chain(llm, chain_type="stuff")
+# QA Chain setup using LCEL
+prompt = PromptTemplate.from_template("Use the following documents to answer the question:\n\n{context}\n\nQuestion: {question}\n\nAnswer:")
+llm = ChatOpenAI(temperature=0)
+qa_chain = prompt | llm | StrOutputParser()
 
 # FastAPI setup
 app = FastAPI()
@@ -34,7 +36,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "Voice RAG Agent is running."}
+    return {"message": "Voice RAG Agent is live 🎙️"}
 
 @app.post("/ask")
 async def ask_question(request: Request):
@@ -46,7 +48,6 @@ async def ask_question(request: Request):
         user_question = body.get("text", "").strip()
 
         if tag != "ask-doc-question":
-            print("Invalid tag received:", tag)
             return {
                 "fulfillment_response": {
                     "messages": [
@@ -64,18 +65,11 @@ async def ask_question(request: Request):
                 }
             }
 
-        # Search for relevant document chunks
         docs = db.similarity_search(user_question, k=2)
-        print("Top doc:", docs[0].page_content if docs else "No match")
+        context = "\n\n".join(doc.page_content for doc in docs)
+        print("Top doc:", docs[0].page_content[:300] if docs else "None")
 
-        if not docs:
-            response_text = "Sorry, I couldn't find an answer in the document."
-        else:
-            # Use invoke (not .run, which is deprecated)
-            response_text = qa_chain.invoke({
-                "input_documents": docs,
-                "question": user_question
-            })
+        response_text = qa_chain.invoke({"context": context, "question": user_question})
 
         return {
             "fulfillment_response": {
@@ -86,7 +80,7 @@ async def ask_question(request: Request):
         }
 
     except Exception as e:
-        print("Exception:", e)
+        print("Error:", e)
         return {
             "fulfillment_response": {
                 "messages": [
