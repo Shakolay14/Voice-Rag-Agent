@@ -10,18 +10,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Load PDF
+# Load the PDF document
 pdf_path = "support_doc.pdf"
 loader = PyPDFLoader(pdf_path)
 documents = loader.load()
 
-# Embeddings and Vector DB
+# Set up embedding and vector store
 embedding = OpenAIEmbeddings()
 db = FAISS.from_documents(documents, embedding)
 
-# QA chain using refine (you can also try map_reduce)
+# Load QA chain using "refine" to handle large documents
 llm = OpenAI(temperature=0)
-chain = load_qa_chain(llm, chain_type="refine")
+qa_chain = load_qa_chain(llm, chain_type="refine")
 
 # FastAPI setup
 app = FastAPI()
@@ -43,6 +43,7 @@ async def ask_question(request: Request):
         body = await request.json()
         print("Received body:", body)
 
+        # FIXED: Get tag from fulfillmentInfo correctly
         tag = body.get("fulfillmentInfo", {}).get("tag", "")
         user_question = body.get("text", "").strip()
 
@@ -68,9 +69,12 @@ async def ask_question(request: Request):
         docs = db.similarity_search(user_question, k=2)
 
         if not docs:
-            response_text = "Sorry, I couldn't find any relevant content in the document."
+            response_text = "Sorry, I couldn't find anything relevant in the document."
         else:
-            response_text = chain.invoke({"input_documents": docs, "question": user_question})
+            response_text = qa_chain.invoke({
+                "input_documents": docs,
+                "question": user_question
+            })
 
         return {
             "fulfillment_response": {
@@ -81,7 +85,7 @@ async def ask_question(request: Request):
         }
 
     except Exception as e:
-        print("Webhook error:", e)
+        print("Exception:", e)
         return {
             "fulfillment_response": {
                 "messages": [
