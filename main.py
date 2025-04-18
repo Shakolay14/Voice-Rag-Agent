@@ -3,8 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.llms import OpenAI
+from langchain_openai import OpenAIEmbeddings, OpenAI
 from langchain.chains.question_answering import load_qa_chain
 from dotenv import load_dotenv
 
@@ -60,24 +59,28 @@ async def ask_question(request: Request):
             return {
                 "fulfillment_response": {
                     "messages": [
-                        {"text": {"text": ["No question found in request"]}}
+                        {"text": {"text": ["No question found in request."]}}
                     ]
                 }
             }
 
+        # Search for relevant document chunks
         docs = db.similarity_search(user_question, k=2)
+        print("Top doc:", docs[0].page_content if docs else "No match")
+
         if not docs:
             response_text = "Sorry, I couldn't find an answer in the document."
         else:
-            response_text = qa_chain.run(input_documents=docs, question=user_question)
-            # Ensure plain text is returned
-            if isinstance(response_text, dict) and "output_text" in response_text:
-                response_text = response_text["output_text"]
+            # Use invoke (not .run, which is deprecated)
+            response_text = qa_chain.invoke({
+                "input_documents": docs,
+                "question": user_question
+            })
 
         return {
             "fulfillment_response": {
                 "messages": [
-                    {"text": {"text": [str(response_text)]}}
+                    {"text": {"text": [response_text]}}
                 ]
             }
         }
