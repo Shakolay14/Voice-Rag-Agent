@@ -43,7 +43,7 @@ async def ask_question(request: Request):
         body = await request.json()
         print("Received body:", body)
 
-        tag = body.get("tag", "")
+       tag = body.get("fulfillmentInfo", {}).get("tag", "")
         user_question = body.get("text", "").strip()
 
         if tag != "ask-doc-question":
