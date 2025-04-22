@@ -1,30 +1,31 @@
 import os
+import json
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.llms import OpenAI
+from langchain.chains.question_answering import load_qa_chain
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-# Load PDF
+# Load PDF document
 pdf_path = "support_doc.pdf"
 loader = PyPDFLoader(pdf_path)
 documents = loader.load()
 
-# Embed and store
+# Create vector database from documents
 embedding = OpenAIEmbeddings()
 db = FAISS.from_documents(documents, embedding)
 
-# QA Chain setup using LCEL
-prompt = PromptTemplate.from_template("Use the following documents to answer the question:\n\n{context}\n\nQuestion: {question}\n\nAnswer:")
-llm = ChatOpenAI(temperature=0)
-qa_chain = prompt | llm | StrOutputParser()
+# Load question-answering chain
+llm = OpenAI(temperature=0)
+qa_chain = load_qa_chain(llm, chain_type="stuff")
 
-# FastAPI setup
+# Setup FastAPI app
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -35,14 +36,14 @@ app.add_middleware(
 )
 
 @app.get("/")
-def read_root():
-    return {"message": "Voice RAG Agent is live 🎙️"}
+def root():
+    return {"message": "Voice RAG Agent is live."}
 
 @app.post("/ask")
-async def ask_question(request: Request):
+async def ask_from_doc(request: Request):
     try:
         body = await request.json()
-        print("Received body:", body)
+        print("Received body:", json.dumps(body, indent=2))
 
         tag = body.get("fulfillmentInfo", {}).get("tag", "")
         user_question = body.get("text", "").strip()
@@ -50,41 +51,39 @@ async def ask_question(request: Request):
         if tag != "ask-doc-question":
             return {
                 "fulfillment_response": {
-                    "messages": [
-                        {"text": {"text": ["Webhook tag mismatch."]}}
-                    ]
+                    "messages": [{"text": {"text": ["Webhook tag mismatch."]}}]
                 }
             }
 
         if not user_question:
             return {
                 "fulfillment_response": {
-                    "messages": [
-                        {"text": {"text": ["No question found in request."]}}
-                    ]
+                    "messages": [{"text": {"text": ["No question provided."]}}]
                 }
             }
 
+        # Retrieve relevant documents
         docs = db.similarity_search(user_question, k=2)
-        context = "\n\n".join(doc.page_content for doc in docs)
-        print("Top doc:", docs[0].page_content[:300] if docs else "None")
+        if not docs:
+            return {
+                "fulfillment_response": {
+                    "messages": [{"text": {"text": ["Sorry, I couldn't find an answer."]}}]
+                }
+            }
 
-        response_text = qa_chain.invoke({"context": context, "question": user_question})
+        print("Top doc:", docs[0].page_content[:300])
+        answer = qa_chain.run(input_documents=docs, question=user_question)
 
         return {
             "fulfillment_response": {
-                "messages": [
-                    {"text": {"text": [response_text]}}
-                ]
+                "messages": [{"text": {"text": [answer]}}]
             }
         }
 
     except Exception as e:
-        print("Error:", e)
+        print("Exception:", str(e))
         return {
             "fulfillment_response": {
-                "messages": [
-                    {"text": {"text": [f"Server error: {str(e)}"]}}
-                ]
+                "messages": [{"text": {"text": [f"Server error: {str(e)}"]}}]
             }
         }
