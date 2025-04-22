@@ -8,10 +8,16 @@ from langchain_community.llms import OpenAI
 from langchain.chains.question_answering import load_qa_chain
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-# Load PDF and build vector store
-pdf_path = "support_doc.pdf"
+# --- Step 1: Load the PDF and Create Vector Index ---
+pdf_path = "support_doc.pdf"  # Ensure this file is in the root project directory
+
+# Check if file exists
+if not os.path.exists(pdf_path):
+    raise FileNotFoundError(f"PDF not found at path: {pdf_path}")
+
 loader = PyPDFLoader(pdf_path)
 documents = loader.load()
 
@@ -21,7 +27,7 @@ db = FAISS.from_documents(documents, embedding)
 llm = OpenAI(temperature=0)
 qa_chain = load_qa_chain(llm, chain_type="stuff")
 
-# FastAPI setup
+# --- Step 2: FastAPI Setup ---
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -33,17 +39,16 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "Voice RAG Agent is live ✅"}
+    return {"message": "PDF RAG Agent is live."}
 
 @app.post("/ask")
 async def ask_question(request: Request):
     try:
         body = await request.json()
-        print("Received body:", body)
-
         tag = body.get("fulfillmentInfo", {}).get("tag", "")
         user_question = body.get("text", "").strip()
 
+        # Only process if correct webhook tag is matched
         if tag != "ask-doc-question":
             return {
                 "fulfillment_response": {
@@ -54,19 +59,16 @@ async def ask_question(request: Request):
         if not user_question:
             return {
                 "fulfillment_response": {
-                    "messages": [{"text": {"text": ["No question provided."]}}]
+                    "messages": [{"text": {"text": ["No question found in request."]}}]
                 }
             }
 
         docs = db.similarity_search(user_question, k=2)
-        print("Top doc:", docs[0].page_content if docs else "No match found.")
-
         if not docs:
-            answer = "Sorry, I couldn't find an answer in the document."
+            answer = "Sorry, I couldn't find any matching content in the document."
         else:
             answer = qa_chain.run(input_documents=docs, question=user_question)
 
-        # ✅ Return only plain string as per Dialogflow CX format
         return {
             "fulfillment_response": {
                 "messages": [{"text": {"text": [answer]}}]
@@ -74,7 +76,6 @@ async def ask_question(request: Request):
         }
 
     except Exception as e:
-        print("Error:", e)
         return {
             "fulfillment_response": {
                 "messages": [{"text": {"text": [f"Error: {str(e)}"]}}]
