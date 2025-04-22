@@ -1,5 +1,4 @@
 import os
-import json
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_community.document_loaders import PyPDFLoader
@@ -9,23 +8,20 @@ from langchain_community.llms import OpenAI
 from langchain.chains.question_answering import load_qa_chain
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Load PDF document
+# Load PDF and build vector store
 pdf_path = "support_doc.pdf"
 loader = PyPDFLoader(pdf_path)
 documents = loader.load()
 
-# Create vector database from documents
 embedding = OpenAIEmbeddings()
 db = FAISS.from_documents(documents, embedding)
 
-# Load question-answering chain
 llm = OpenAI(temperature=0)
 qa_chain = load_qa_chain(llm, chain_type="stuff")
 
-# Setup FastAPI app
+# FastAPI setup
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -36,14 +32,14 @@ app.add_middleware(
 )
 
 @app.get("/")
-def root():
-    return {"message": "Voice RAG Agent is live."}
+def read_root():
+    return {"message": "Voice RAG Agent is live ✅"}
 
 @app.post("/ask")
-async def ask_from_doc(request: Request):
+async def ask_question(request: Request):
     try:
         body = await request.json()
-        print("Received body:", json.dumps(body, indent=2))
+        print("Received body:", body)
 
         tag = body.get("fulfillmentInfo", {}).get("tag", "")
         user_question = body.get("text", "").strip()
@@ -62,18 +58,15 @@ async def ask_from_doc(request: Request):
                 }
             }
 
-        # Retrieve relevant documents
         docs = db.similarity_search(user_question, k=2)
+        print("Top doc:", docs[0].page_content if docs else "No match found.")
+
         if not docs:
-            return {
-                "fulfillment_response": {
-                    "messages": [{"text": {"text": ["Sorry, I couldn't find an answer."]}}]
-                }
-            }
+            answer = "Sorry, I couldn't find an answer in the document."
+        else:
+            answer = qa_chain.run(input_documents=docs, question=user_question)
 
-        print("Top doc:", docs[0].page_content[:300])
-        answer = qa_chain.run(input_documents=docs, question=user_question)
-
+        # ✅ Return only plain string as per Dialogflow CX format
         return {
             "fulfillment_response": {
                 "messages": [{"text": {"text": [answer]}}]
@@ -81,9 +74,9 @@ async def ask_from_doc(request: Request):
         }
 
     except Exception as e:
-        print("Exception:", str(e))
+        print("Error:", e)
         return {
             "fulfillment_response": {
-                "messages": [{"text": {"text": [f"Server error: {str(e)}"]}}]
+                "messages": [{"text": {"text": [f"Error: {str(e)}"]}}]
             }
         }
