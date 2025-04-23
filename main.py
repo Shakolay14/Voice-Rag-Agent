@@ -8,11 +8,19 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.chat_models import ChatOpenAI
 import os
 import uvicorn
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI()
 
-# Set your OpenAI API Key
-os.environ["OPENAI_API_KEY"] = "your-openai-key-here"
+# Get API key from environment variable
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY environment variable not set")
+
+os.environ["OPENAI_API_KEY"] = api_key
 
 # Load the PDF and split into chunks
 loader = PyPDFLoader("support_doc.pdf")
@@ -54,6 +62,11 @@ async def ask_webhook(request: Request):
             ]
         }
     }
+
+# Add a health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 # Run server locally (for Render use auto start script)
 if __name__ == "__main__":
