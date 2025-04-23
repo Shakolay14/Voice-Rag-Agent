@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -42,18 +43,18 @@ async def ask(request: Request):
         tag = body.get("fulfillmentInfo", {}).get("tag", "")
 
         if tag != "ask-doc-question":
-            return {
+            return JSONResponse(content={
                 "fulfillment_response": {
                     "messages": [{"text": {"text": ["Invalid webhook tag."]}}]
                 }
-            }
+            })
 
         if not question:
-            return {
+            return JSONResponse(content={
                 "fulfillment_response": {
                     "messages": [{"text": {"text": ["No question provided."]}}]
                 }
-            }
+            })
 
         docs = db.similarity_search(question, k=2)
         if not docs:
@@ -62,15 +63,15 @@ async def ask(request: Request):
             result = qa_chain({"input_documents": docs, "question": question})
             response_text = result["answer"]
 
-        return {
+        return JSONResponse(content={
             "fulfillment_response": {
                 "messages": [{"text": {"text": [response_text]}}]
             }
-        }
+        })
 
     except Exception as e:
-        return {
+        return JSONResponse(content={
             "fulfillment_response": {
                 "messages": [{"text": {"text": [f"Error: {str(e)}"]}}]
             }
-        }
+        })
